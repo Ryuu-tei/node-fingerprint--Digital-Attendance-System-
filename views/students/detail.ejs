@@ -1,0 +1,86 @@
+<h2 class="mb-4">Student Details</h2>
+
+<div class="row">
+  <div class="col-md-8">
+    <div class="card mb-3">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <%= typeof student !== 'undefined' && student ? student.firstName + ' ' + student.lastName : '' %>
+        </h5>
+      </div>
+      <div class="card-body">
+        <% if (typeof student !== 'undefined' && student) { %>
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <strong>Student ID:</strong> <%= student.studentId %>
+            </div>
+            <div class="col-md-6">
+              <strong>Email:</strong> <%= student.email || '-' %>
+            </div>
+          </div>
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <strong>Phone:</strong> <%= student.phone || '-' %>
+            </div>
+            <div class="col-md-6">
+              <strong>Fingerprint Status:</strong>
+              <% if (student.fingerprintEnrolled) { %>
+                <span class="badge bg-success">Enrolled</span>
+              <% } else { %>
+                <span class="badge bg-danger">Not Enrolled</span>
+              <% } %>
+            </div>
+          </div>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header">
+        <h5 class="mb-0">Enrolled Courses</h5>
+      </div>
+      <div class="card-body">
+        <% if (typeof student !== 'undefined' && student && student.enrollments && student.enrollments.length > 0) { %>
+          <div class="list-group">
+            <% student.enrollments.forEach(enrollment => { %>
+              <a href="/courses/<%= enrollment.course._id %>" class="list-group-item list-group-item-action">
+                <strong><%= enrollment.course.code %></strong> - <%= enrollment.course.name %>
+              </a>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <p class="text-muted">No course enrollments</p>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Enrolled Fingerprints</h5>
+      </div>
+      <div class="card-body">
+        <% if (typeof student !== 'undefined' && student && student.fingerprints && student.fingerprints.length > 0) { %>
+          <div class="list-group">
+            <% student.fingerprints.forEach(fp => { %>
+              <div class="list-group-item">
+                <strong><%= fp.fingerName || ('Finger ' + fp.fingerIndex) %></strong>
+                <br>
+                <small class="text-muted">
+                  <%= new Date(fp.createdAt).toLocaleDateString() %>
+                </small>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <p class="text-muted">No fingerprints enrolled</p>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mt-3">
+  <a href="/students" class="btn btn-secondary">Back to Students</a>
+</div>

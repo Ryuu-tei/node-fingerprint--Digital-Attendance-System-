@@ -1,0 +1,103 @@
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+  <div>
+    <p class="eyebrow text-primary mb-1">Registry</p>
+    <h2 class="mb-0">Students</h2>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="/students/create" class="btn btn-primary">
+      <i class="bi bi-plus"></i> Add Student
+    </a>
+    <a href="/students/import/page" class="btn btn-secondary">
+      <i class="bi bi-upload"></i> Import from CSV
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <input type="text" id="searchInput" class="form-control" placeholder="Search by name, student ID, email, or phone">
+  </div>
+</div>
+
+<% if (typeof error !== 'undefined' && error) { %>
+  <div class="alert alert-danger alert-dismissible fade show" role="alert">
+    <%= error %>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+<% } %>
+
+<% if (typeof message !== 'undefined' && message) { %>
+  <div class="alert alert-success alert-dismissible fade show" role="alert">
+    <%= message %>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+<% } %>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Student ID</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Fingerprint</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="studentsTable">
+        <% if (typeof students !== 'undefined' && students.length > 0) { %>
+          <% students.forEach(student => { %>
+            <tr>
+              <td><strong><%= student.studentId %></strong></td>
+              <td><%= student.firstName %> <%= student.lastName %></td>
+              <td><%= student.email || '-' %></td>
+              <td><%= student.phone || '-' %></td>
+              <td>
+                <% if (student.fingerprintEnrolled) { %>
+                  <span class="badge bg-success">Enrolled</span>
+                <% } else { %>
+                  <span class="badge bg-danger">Not Enrolled</span>
+                <% } %>
+              </td>
+              <td>
+                <div class="d-flex flex-wrap gap-2">
+                  <a href="/students/detail/<%= student._id %>" class="btn btn-sm btn-info">
+                    <i class="bi bi-eye"></i> View
+                  </a>
+                  <button class="btn btn-sm btn-danger" onclick="deleteStudent('<%= student._id %>')">
+                    <i class="bi bi-trash"></i> Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          <% }); %>
+        <% } else { %>
+          <tr>
+            <td colspan="6" class="text-center py-4 text-muted">No students found</td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function deleteStudent(id) {
+  if (confirm('Are you sure you want to delete this student?')) {
+    fetch(`/students/${id}`, {
+      method: 'DELETE'
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        location.reload();
+      } else {
+        alert('Error: ' + data.error);
+      }
+    })
+    .catch(err => alert('Error: ' + err.message));
+  }
+}
+</script>

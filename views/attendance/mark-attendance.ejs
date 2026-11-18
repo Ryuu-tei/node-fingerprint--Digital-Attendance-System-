@@ -1,0 +1,650 @@
+<h2 class="mb-4">Mark Attendance</h2>
+
+<div id="bridgeStatusPanel" class="alert alert-secondary">
+  Checking fingerprint bridge...
+</div>
+
+<div class="row">
+  <div class="col-md-8">
+    <div class="card mb-3">
+      <div class="card-header">
+        <h5 class="mb-0">
+          Session: <%= typeof session !== 'undefined' && session ? new Date(session.sessionDate).toLocaleDateString() : '' %>
+          -
+          <%= typeof session !== 'undefined' && session ? session.startTime : '' %>
+        </h5>
+      </div>
+      <div class="card-body">
+        <p><strong>Course:</strong> <%= typeof course !== 'undefined' && course ? course.code + ' - ' + course.name : '' %></p>
+        <p><strong>Topic:</strong> <%= typeof session !== 'undefined' && session ? (session.topic || '-') : '' %></p>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Student Attendance</h5>
+        <button id="scanBtn" class="btn btn-sm btn-info">
+          <i class="bi bi-fingerprint"></i> Scan Fingerprint
+        </button>
+      </div>
+      <div class="card-body border-bottom">
+        <label for="targetStudentSelect" class="form-label">Student to mark</label>
+        <div class="d-flex gap-2 flex-wrap">
+          <select id="targetStudentSelect" class="form-control flex-grow-1">
+            <option value="">Select student</option>
+          </select>
+          <button id="scanSelectedBtn" type="button" class="btn btn-info">
+            <i class="bi bi-fingerprint"></i> Scan Selected
+          </button>
+        </div>
+      </div>
+      <div class="attendance-scanner">
+        <div class="mini-scanner">
+          <i class="bi bi-fingerprint"></i>
+          <span id="attendanceScannerState">Ready</span>
+        </div>
+        <img id="attendanceScannerImage" class="attendance-preview" alt="Captured fingerprint" style="display:none;">
+        <div id="attendanceCaptureFeedback" class="mt-2" style="display:none;">
+          <div class="progress" style="height: 10px;">
+            <div
+              id="attendanceQualityBar"
+              class="progress-bar bg-secondary"
+              role="progressbar"
+              style="width: 0%;"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+            ></div>
+          </div>
+          <small id="attendanceCaptureHint" class="text-muted d-block mt-2 text-center">
+            Place your finger flat in the center of the scanner.
+          </small>
+        </div>
+      </div>
+      <div id="scanStatus" class="alert alert-info" style="display:none;margin:15px;"></div>
+      <div id="matchDetails" style="display:none;margin:0 15px 15px;"></div>
+      <div class="table-responsive">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Student ID</th>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="attendanceTable">
+            <tr>
+              <td colspan="4" class="text-center py-3 text-muted">Loading...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button id="closeSessionBtn" class="btn btn-warning">Close Session</button>
+      <a href="/attendance/course/<%= typeof course !== 'undefined' && course ? course._id : '' %>/sessions" class="btn btn-secondary">Back</a>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Summary</h5>
+      </div>
+      <div class="card-body">
+        <p>Total Students: <strong id="totalCount">0</strong></p>
+        <p>Present: <strong id="presentCount">0</strong></p>
+        <p>Absent: <strong id="absentCount">0</strong></p>
+        <p>Unmarked: <strong id="unmarkedCount">0</strong></p>
+        <hr>
+        <button id="mockScanBtn" class="btn btn-sm btn-outline-primary w-100">
+          <i class="bi bi-broadcast"></i> Simulate Scan
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const sessionId = '<%= typeof session !== 'undefined' && session ? session._id : '' %>';
+const courseId = '<%= typeof course !== 'undefined' && course ? course._id : '' %>';
+const sessionStatus = '<%= typeof session !== 'undefined' && session ? session.status : '' %>';
+const bridgeStatusPanel = document.getElementById('bridgeStatusPanel');
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function normalizeConfidenceScore(score) {
+  const numericScore = Number(score);
+
+  if (!Number.isFinite(numericScore)) {
+    return 0;
+  }
+
+  if (numericScore <= 100) {
+    return Math.max(0, Math.min(100, Math.round(numericScore)));
+  }
+
+  return Math.max(0, Math.min(100, Math.round(numericScore / 10)));
+}
+
+function refreshBridgeStatus() {
+  fetch('/fingerprint/api/bridge-info')
+    .then(res => res.json())
+    .then(data => {
+      const bridge = data && data.data ? data.data : data;
+
+      if (!bridge || !bridge.success) {
+        bridgeStatusPanel.className = 'alert alert-danger';
+        bridgeStatusPanel.textContent = bridge && bridge.error ? bridge.error : 'Fingerprint bridge is not reachable. Start it with npm run bridge.';
+        return;
+      }
+
+      if (bridge.ready) {
+        const deviceText = bridge.sdk && bridge.sdk.devices && bridge.sdk.devices.length
+          ? ` Device: ${bridge.sdk.devices.join(', ')}.`
+          : '';
+        bridgeStatusPanel.className = 'alert alert-success';
+        bridgeStatusPanel.textContent = `${bridge.name || 'Fingerprint bridge'} is ready.${deviceText}`;
+        return;
+      }
+
+      bridgeStatusPanel.className = 'alert alert-warning';
+      bridgeStatusPanel.textContent = bridge.message || 'Fingerprint bridge is running, but no device is ready.';
+    })
+    .catch(() => {
+      bridgeStatusPanel.className = 'alert alert-danger';
+      bridgeStatusPanel.textContent = 'Fingerprint bridge is not reachable. Start it with npm run bridge.';
+    });
+}
+
+function updateAttendanceCaptureFeedback(eventData, requiredQuality = 75) {
+  const feedback = document.getElementById('attendanceCaptureFeedback');
+  const qualityBar = document.getElementById('attendanceQualityBar');
+  const hint = document.getElementById('attendanceCaptureHint');
+  const quality = Number(eventData.quality || 0);
+
+  feedback.style.display = 'block';
+  qualityBar.style.width = quality + '%';
+  qualityBar.setAttribute('aria-valuenow', quality);
+
+  if (quality >= requiredQuality) {
+    qualityBar.className = 'progress-bar bg-success';
+  } else if (quality >= Math.max(55, requiredQuality - 20)) {
+    qualityBar.className = 'progress-bar bg-warning';
+  } else {
+    qualityBar.className = 'progress-bar bg-danger';
+  }
+
+  hint.textContent = eventData.message || 'Keep your finger still on the scanner.';
+}
+
+function resetAttendanceCaptureFeedback(options = {}) {
+  const feedback = document.getElementById('attendanceCaptureFeedback');
+  const qualityBar = document.getElementById('attendanceQualityBar');
+  const hint = document.getElementById('attendanceCaptureHint');
+  const scannerImage = document.getElementById('attendanceScannerImage');
+
+  qualityBar.style.width = '0%';
+  qualityBar.setAttribute('aria-valuenow', '0');
+  qualityBar.className = 'progress-bar bg-secondary';
+  hint.textContent = 'Place your finger flat in the center of the scanner.';
+  scannerImage.removeAttribute('src');
+  scannerImage.style.display = 'none';
+  feedback.style.display = options.show ? 'block' : 'none';
+}
+
+function renderRetryMessage(message, match = null) {
+  const detail = match && Number(match.enrolledFingerprintCount || 0) > 0
+    ? `<br><small>Checked ${match.checkedCount || 0} enrolled fingerprint(s). Best raw score: ${match.bestScore || 0}${match.threshold ? ` / threshold ${match.threshold}` : ''}.</small>`
+    : '';
+
+  return `
+    <div class="alert alert-warning mb-0">
+      ${escapeHtml(message)}${detail}
+      <div class="mt-2">
+        <button type="button" class="btn btn-sm btn-warning" onclick="scanFingerprint()">
+          Try Again
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function studentLabel(student) {
+  if (!student) {
+    return 'Unknown student';
+  }
+
+  return `${student.studentId || ''} - ${student.firstName || ''} ${student.lastName || ''}`.trim();
+}
+
+function getSelectedStudentId() {
+  return document.getElementById('targetStudentSelect').value;
+}
+
+function selectStudent(studentId) {
+  document.getElementById('targetStudentSelect').value = studentId;
+}
+
+function selectAndScan(studentId) {
+  selectStudent(studentId);
+  scanFingerprint();
+}
+
+function renderMatchDetails(matchData) {
+  const detailDiv = document.getElementById('matchDetails');
+
+  if (matchData.success && matchData.found) {
+    const match = matchData.data;
+    const confidence = normalizeConfidenceScore(match.confidence);
+    detailDiv.className = 'alert alert-success';
+    detailDiv.innerHTML = `
+      <strong>Matched:</strong> ${escapeHtml(studentLabel(match.student))}
+      ${match.fingerName ? `<br><small>Finger: ${escapeHtml(match.fingerName)}</small>` : ''}
+      <br><small>Confidence saved: ${confidence}%${match.rawScore !== undefined ? `, raw score: ${match.rawScore}` : ''}${match.threshold ? `, threshold: ${match.threshold}` : ''}</small>
+    `;
+    detailDiv.style.display = 'block';
+    return;
+  }
+
+  const match = matchData.match;
+  if (!match) {
+    detailDiv.style.display = 'none';
+    return;
+  }
+
+  const closest = match.closest;
+  const selectedStudent = match.selectedStudent;
+  detailDiv.className = 'alert alert-warning';
+  detailDiv.innerHTML = closest
+    ? `
+      <strong>No match.</strong> ${selectedStudent ? `Selected student: ${escapeHtml(studentLabel(selectedStudent))}.` : ''}
+      <br><small>Closest checked finger: ${escapeHtml(closest.fingerName || 'Enrolled finger')}</small>
+      ${closest.student ? `<br><small>Student checked: ${escapeHtml(studentLabel(closest.student))}</small>` : ''}
+      <br><small>Checked ${match.checkedCount || 0} of ${match.enrolledFingerprintCount || 0} fingerprint(s). Closest confidence: ${normalizeConfidenceScore(closest.confidenceScore || closest.score)}%, raw score: ${closest.score || 0}${match.threshold ? `, threshold: ${match.threshold}` : ''}.</small>
+    `
+    : `
+      <strong>No match.</strong>
+      ${selectedStudent ? `<br><small>Selected student: ${escapeHtml(studentLabel(selectedStudent))}</small>` : ''}
+      <br><small>Checked ${match.checkedCount || 0} of ${match.enrolledFingerprintCount || 0} enrolled fingerprint(s). Best raw score: ${match.bestScore || 0}${match.threshold ? `, threshold: ${match.threshold}` : ''}.</small>
+    `;
+  detailDiv.style.display = 'block';
+}
+
+function markMatchedStudent(matchData, statusDiv, scannerState) {
+  const confidence = normalizeConfidenceScore(matchData.data.confidence);
+
+  return fetch(`/attendance/session/${sessionId}/mark`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      studentId: matchData.data.student._id,
+      status: 'present',
+      markedBy: 'biometric',
+      confidenceScore: confidence
+    })
+  })
+  .then(res => res.json())
+  .then(markData => {
+        if (markData.success) {
+          statusDiv.innerHTML = `<div class="alert alert-success">${escapeHtml(studentLabel(matchData.data.student))} marked as Present</div>`;
+          scannerState.textContent = 'Matched';
+          loadRecords();
+    } else if (markData.code === 'ATTENDANCE_ALREADY_MARKED' || (markData.error && markData.error.includes('already marked'))) {
+      statusDiv.innerHTML = `<div class="alert alert-warning">${escapeHtml(studentLabel(matchData.data.student))} already marked for this session</div>`;
+      scannerState.textContent = 'Already marked';
+    } else {
+      statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${escapeHtml(markData.error)}</div>`;
+      scannerState.textContent = 'Error';
+    }
+  });
+}
+
+// Load attendance records
+function loadRecords() {
+  fetch(`/attendance/session/${sessionId}/records`)
+    .then(res => res.json())
+    .then(data => {
+      const tbody = document.getElementById('attendanceTable');
+      const targetSelect = document.getElementById('targetStudentSelect');
+      const selectedStudentId = targetSelect.value;
+      tbody.innerHTML = '';
+      targetSelect.innerHTML = '<option value="">Select student</option>';
+      let presentCount = 0, absentCount = 0, unmarkedCount = 0;
+
+      data.data.forEach(record => {
+        targetSelect.innerHTML += `<option value="${record.student._id}">${record.student.studentId} - ${record.student.firstName} ${record.student.lastName}</option>`;
+        presentCount += record.status === 'present' ? 1 : 0;
+        absentCount += record.status === 'absent' ? 1 : 0;
+        unmarkedCount += record.status === 'unmarked' ? 1 : 0;
+        const statusBadge = record.status === 'present'
+          ? '<span class="badge bg-success">Present</span>'
+          : record.status === 'absent'
+            ? '<span class="badge bg-danger">Absent</span>'
+            : '<span class="badge bg-secondary">Unmarked</span>';
+        const nextStatus = record.status === 'present' ? 'absent' : 'present';
+        const actionLabel = record.status === 'present' ? 'Mark Absent' : 'Mark Present';
+        const encodedStudentName = encodeURIComponent(studentLabel(record.student));
+
+        tbody.innerHTML += `
+          <tr>
+            <td>${record.student.studentId}</td>
+            <td>${record.student.firstName} ${record.student.lastName}</td>
+            <td>${statusBadge}</td>
+            <td>
+              <button
+                type="button"
+                class="btn btn-sm btn-warning attendance-action"
+                data-action="mark"
+                data-student-id="${record.student._id}"
+                data-status="${nextStatus}"
+                data-student-name="${encodedStudentName}"
+              >
+                ${actionLabel}
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-info attendance-action"
+                data-action="scan"
+                data-student-id="${record.student._id}"
+              >
+                <i class="bi bi-fingerprint"></i> Scan
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-danger attendance-action"
+                data-action="mark"
+                data-student-id="${record.student._id}"
+                data-status="absent"
+                data-student-name="${encodedStudentName}"
+              >
+                Absent
+              </button>
+            </td>
+          </tr>
+        `;
+      });
+
+      document.getElementById('totalCount').innerText = data.data.length;
+      document.getElementById('presentCount').innerText = presentCount;
+      document.getElementById('absentCount').innerText = absentCount;
+      document.getElementById('unmarkedCount').innerText = unmarkedCount;
+      if (selectedStudentId) {
+        targetSelect.value = selectedStudentId;
+      }
+    });
+}
+
+// Scan fingerprint
+document.getElementById('scanBtn').addEventListener('click', function() {
+  scanFingerprint();
+});
+
+document.getElementById('scanSelectedBtn').addEventListener('click', function() {
+  scanFingerprint();
+});
+
+document.getElementById('attendanceTable').addEventListener('click', function(event) {
+  const button = event.target.closest('.attendance-action');
+  if (!button) {
+    return;
+  }
+
+  const action = button.dataset.action;
+  const studentId = button.dataset.studentId;
+
+  if (action === 'scan') {
+    selectAndScan(studentId);
+    return;
+  }
+
+  if (action === 'mark') {
+    setAttendance(
+      studentId,
+      button.dataset.status,
+      decodeURIComponent(button.dataset.studentName || 'Student')
+    );
+  }
+});
+
+document.getElementById('mockScanBtn').addEventListener('click', function() {
+  const mockStudentId = getSelectedStudentId();
+  if (!mockStudentId) {
+    alert('Select a student to simulate');
+    return;
+  }
+  mockScanFingerprint(mockStudentId);
+});
+
+function scanFingerprint(mockStudentId = null) {
+  const selectedStudentId = mockStudentId || getSelectedStudentId();
+  if (!selectedStudentId) {
+    alert('Select the student you want to mark before scanning');
+    return;
+  }
+
+  const statusDiv = document.getElementById('scanStatus');
+  const scannerState = document.getElementById('attendanceScannerState');
+  const scannerImage = document.getElementById('attendanceScannerImage');
+  const captureHint = document.getElementById('attendanceCaptureHint');
+  const scanBtn = document.getElementById('scanBtn');
+  const mockScanBtn = document.getElementById('mockScanBtn');
+  document.getElementById('matchDetails').style.display = 'none';
+  resetAttendanceCaptureFeedback({ show: true });
+  const selectedStudentText = document.getElementById('targetStudentSelect').selectedOptions[0]?.textContent || 'selected student';
+  statusDiv.innerHTML = `Scanning fingerprint for ${escapeHtml(selectedStudentText)}... Please place that student's finger on the scanner.`;
+  statusDiv.style.display = 'block';
+  scannerState.textContent = 'Scanning...';
+  captureHint.textContent = 'Place your finger flat in the center of the scanner.';
+  scanBtn.disabled = true;
+  mockScanBtn.disabled = true;
+
+  let captureFinished = false;
+  let requiredQuality = 75;
+  const source = new EventSource('/fingerprint/api/capture-stream?fingerIndex=0');
+
+  function finishScanUi() {
+    scanBtn.disabled = false;
+    mockScanBtn.disabled = false;
+  }
+
+  source.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+
+    if (data.event === 'started') {
+      requiredQuality = data.requiredQuality || requiredQuality;
+      captureHint.textContent = data.message || captureHint.textContent;
+      return;
+    }
+
+    if (data.event === 'preview' || data.event === 'position') {
+      updateAttendanceCaptureFeedback(data, requiredQuality);
+      scannerState.textContent = 'Scanning...';
+      return;
+    }
+
+    if (data.event !== 'done') {
+      return;
+    }
+
+    captureFinished = true;
+    source.close();
+
+    if (!data.success) {
+      statusDiv.innerHTML = `
+        <div class="alert alert-danger mb-0">
+          Error: ${data.error || 'Fingerprint capture failed'}
+          <div class="mt-2">
+            <button type="button" class="btn btn-sm btn-danger" onclick="scanFingerprint()">Try Again</button>
+          </div>
+        </div>
+      `;
+      scannerState.textContent = 'Error';
+      finishScanUi();
+      return;
+    }
+
+    updateAttendanceCaptureFeedback(data, requiredQuality);
+
+    if (data.imageData) {
+      scannerImage.src = `data:${data.imageMimeType || 'image/bmp'};base64,${data.imageData}`;
+      scannerImage.style.display = 'block';
+    }
+
+    statusDiv.innerHTML = `Verifying fingerprint for ${escapeHtml(selectedStudentText)}...`;
+    scannerState.textContent = 'Matching...';
+
+    fetch('/fingerprint/api/match-for-attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId,
+          studentId: selectedStudentId,
+          templateData: data.templateData
+        })
+      })
+      .then(res => res.json())
+      .then(matchData => {
+        renderMatchDetails(matchData);
+        if (matchData.success && matchData.found) {
+          return markMatchedStudent(matchData, statusDiv, scannerState);
+        } else {
+          statusDiv.innerHTML = renderRetryMessage(
+            matchData.message || matchData.error || 'Fingerprint not recognized in this course. Use an enrolled finger and try again.',
+            matchData.match
+          );
+          scannerState.textContent = 'No match';
+        }
+      })
+      .catch(err => {
+        statusDiv.innerHTML = '<div class="alert alert-danger">Error: ' + err.message + '</div>';
+        scannerState.textContent = 'Error';
+      })
+      .finally(finishScanUi);
+  };
+
+  source.onerror = function() {
+    source.close();
+    if (!captureFinished) {
+      statusDiv.innerHTML = '<div class="alert alert-danger">Error: fingerprint capture stream disconnected</div>';
+      scannerState.textContent = 'Error';
+      finishScanUi();
+    }
+  };
+}
+
+function mockScanFingerprint(studentId) {
+  const statusDiv = document.getElementById('scanStatus');
+  const scannerState = document.getElementById('attendanceScannerState');
+  const scanBtn = document.getElementById('scanBtn');
+  const mockScanBtn = document.getElementById('mockScanBtn');
+  document.getElementById('matchDetails').style.display = 'none';
+  resetAttendanceCaptureFeedback();
+  statusDiv.innerHTML = 'Simulating fingerprint scan...';
+  statusDiv.style.display = 'block';
+  scannerState.textContent = 'Simulating...';
+  scanBtn.disabled = true;
+  mockScanBtn.disabled = true;
+
+  fetch('/fingerprint/api/mock-capture-for-attendance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ courseId, studentId })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success && data.found) {
+      fetch(`/attendance/session/${sessionId}/mark`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: data.data.student._id,
+          status: 'present',
+          markedBy: 'biometric',
+          confidenceScore: normalizeConfidenceScore(data.data.confidence)
+        })
+      })
+      .then(res => res.json())
+      .then(markData => {
+        if (markData.success) {
+          renderMatchDetails(data);
+          statusDiv.innerHTML = `<div class="alert alert-success">${escapeHtml(studentLabel(data.data.student))} marked as Present by mock fingerprint</div>`;
+          scannerState.textContent = 'Matched';
+          loadRecords();
+        } else {
+          statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${escapeHtml(markData.error)}</div>`;
+          scannerState.textContent = 'Error';
+        }
+      });
+    } else {
+      statusDiv.innerHTML = `<div class="alert alert-warning">${escapeHtml(data.message || data.error || 'Mock fingerprint not recognized')}</div>`;
+      scannerState.textContent = 'No match';
+    }
+  })
+  .catch(err => {
+    statusDiv.innerHTML = '<div class="alert alert-danger">Error: ' + err.message + '</div>';
+    scannerState.textContent = 'Error';
+  })
+  .finally(() => {
+    scanBtn.disabled = false;
+    mockScanBtn.disabled = false;
+  });
+}
+
+function setAttendance(studentId, newStatus, name = 'Student') {
+  fetch('/attendance/override', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, studentId, status: newStatus })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      const statusDiv = document.getElementById('scanStatus');
+      statusDiv.style.display = 'block';
+      statusDiv.innerHTML = `<div class="alert alert-success mb-0">${escapeHtml(name)} marked ${escapeHtml(newStatus)}</div>`;
+      loadRecords();
+    } else {
+      alert('Error: ' + data.error);
+    }
+  });
+}
+
+document.getElementById('closeSessionBtn').addEventListener('click', function() {
+  if (confirm('Close this session? Students will not be able to be marked after this.')) {
+    fetch(`/attendance/session/${sessionId}/close`, {
+      method: 'POST'
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        const autoAbsentCount = data.data && data.data.autoAbsentCount ? data.data.autoAbsentCount : 0;
+        alert(`Session closed. ${autoAbsentCount} unmarked student(s) were marked absent.`);
+        window.location.href = `/attendance/course/${courseId}/sessions`;
+      } else {
+        alert('Error: ' + data.error);
+      }
+    });
+  }
+});
+
+// Initial load
+refreshBridgeStatus();
+loadRecords();
+
+if (sessionStatus === 'closed') {
+  document.getElementById('scanBtn').disabled = true;
+  document.getElementById('mockScanBtn').disabled = true;
+  document.getElementById('closeSessionBtn').disabled = true;
+  document.getElementById('attendanceScannerState').textContent = 'Closed';
+}
+</script>

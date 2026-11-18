@@ -1,0 +1,67 @@
+<h2 class="mb-4">Attendance Sessions - <%= typeof course !== 'undefined' && course ? course.code : '' %></h2>
+
+<div class="d-flex justify-content-between mb-3">
+  <a href="/attendance/course/<%= typeof course !== 'undefined' && course ? course._id : '' %>/create-session" class="btn btn-success">
+    <i class="bi bi-plus"></i> New Session
+  </a>
+  <a href="/courses/<%= typeof course !== 'undefined' && course ? course._id : '' %>" class="btn btn-secondary">Back to Course</a>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Start Time</th>
+          <th>End Time</th>
+          <th>Topic</th>
+          <th>Marked</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (typeof sessions !== 'undefined' && sessions.length > 0) { %>
+          <% sessions.forEach(session => { %>
+            <tr>
+              <td><%= new Date(session.sessionDate).toLocaleDateString() %></td>
+              <td><%= session.startTime %></td>
+              <td><%= session.endTime %></td>
+              <td><%= session.topic || '-' %></td>
+              <td>
+                <%= session.markedCount || 0 %>/<%= session.totalStudents || 0 %>
+                <small class="text-muted">
+                  (<%= session.presentCount || 0 %> present,
+                  <%= session.unmarkedCount || 0 %> unmarked)
+                </small>
+              </td>
+              <td>
+                <% if (session.status === 'open') { %>
+                  <span class="badge bg-success">Open</span>
+                <% } else { %>
+                  <span class="badge bg-danger">Closed</span>
+                <% } %>
+              </td>
+              <td>
+                <% if (session.status === 'open') { %>
+                  <a href="/attendance/session/<%= session._id %>/mark" class="btn btn-sm btn-primary">
+                    Mark Attendance
+                  </a>
+                <% } else { %>
+                  <a href="/reports/course/<%= course._id %>" class="btn btn-sm btn-info">
+                    View Report
+                  </a>
+                <% } %>
+              </td>
+            </tr>
+          <% }); %>
+        <% } else { %>
+          <tr>
+            <td colspan="7" class="text-center py-4 text-muted">No sessions found</td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>

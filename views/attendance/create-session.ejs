@@ -1,0 +1,174 @@
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+  <div>
+    <p class="eyebrow text-primary mb-1">Attendance setup</p>
+    <h2 class="mb-0">Create Attendance Session</h2>
+  </div>
+  <a href="/attendance/course/<%= typeof course !== 'undefined' && course ? course._id : '' %>/sessions" class="btn btn-secondary">
+    <i class="bi bi-arrow-left"></i> Back
+  </a>
+</div>
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <% if (typeof error !== 'undefined' && error) { %>
+          <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <%= error %>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        <% } %>
+
+        <form id="sessionForm">
+          <div id="formError" class="alert alert-danger" style="display:none;"></div>
+
+          <div class="mb-3">
+            <label for="sessionDate" class="form-label">Session Date *</label>
+            <input type="date" class="form-control" id="sessionDate" name="sessionDate" required>
+            <div class="invalid-feedback">Choose today or a future date.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="startTime" class="form-label">Start Time *</label>
+            <input type="time" class="form-control" id="startTime" name="startTime" required>
+            <div class="invalid-feedback">Enter a valid start time.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="endTime" class="form-label">End Time *</label>
+            <input type="time" class="form-control" id="endTime" name="endTime" required>
+            <div class="invalid-feedback">End time must be after start time.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="topic" class="form-label">Topic</label>
+            <input type="text" class="form-control" id="topic" name="topic">
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-success">
+              <i class="bi bi-calendar-plus"></i> Create Session
+            </button>
+            <a href="/attendance/course/<%= typeof course !== 'undefined' && course ? course._id : '' %>/sessions" class="btn btn-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const courseId = '<%= typeof course !== 'undefined' && course ? course._id : '' %>';
+const form = document.getElementById('sessionForm');
+const sessionDateInput = document.getElementById('sessionDate');
+const startTimeInput = document.getElementById('startTime');
+const endTimeInput = document.getElementById('endTime');
+const formError = document.getElementById('formError');
+
+function todayString() {
+  const today = new Date();
+  const offset = today.getTimezoneOffset();
+  const localDate = new Date(today.getTime() - offset * 60 * 1000);
+  return localDate.toISOString().slice(0, 10);
+}
+
+function toMinutes(time) {
+  if (!time || !/^\d{2}:\d{2}$/.test(time)) {
+    return null;
+  }
+
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+function showFormError(message) {
+  formError.textContent = message;
+  formError.style.display = 'block';
+}
+
+function clearFormError() {
+  formError.textContent = '';
+  formError.style.display = 'none';
+}
+
+function setInvalid(input, invalid) {
+  input.classList.toggle('is-invalid', invalid);
+}
+
+function validateSessionForm() {
+  clearFormError();
+
+  const date = sessionDateInput.value;
+  const startMinutes = toMinutes(startTimeInput.value);
+  const endMinutes = toMinutes(endTimeInput.value);
+  let isValid = true;
+
+  const dateInvalid = !date || date < todayString();
+  setInvalid(sessionDateInput, dateInvalid);
+  if (dateInvalid) {
+    isValid = false;
+  }
+
+  const startInvalid = startMinutes === null;
+  setInvalid(startTimeInput, startInvalid);
+  if (startInvalid) {
+    isValid = false;
+  }
+
+  const endInvalid = endMinutes === null || (startMinutes !== null && endMinutes <= startMinutes);
+  setInvalid(endTimeInput, endInvalid);
+  if (endInvalid) {
+    isValid = false;
+  }
+
+  if (!isValid) {
+    showFormError('Please choose a valid date and make sure the end time is after the start time.');
+  }
+
+  return isValid;
+}
+
+sessionDateInput.min = todayString();
+sessionDateInput.value = sessionDateInput.value || todayString();
+
+startTimeInput.addEventListener('change', function() {
+  if (startTimeInput.value) {
+    endTimeInput.min = startTimeInput.value;
+  }
+  validateSessionForm();
+});
+
+endTimeInput.addEventListener('change', validateSessionForm);
+sessionDateInput.addEventListener('change', validateSessionForm);
+
+form.addEventListener('submit', function(e) {
+  e.preventDefault();
+
+  if (!validateSessionForm()) {
+    return;
+  }
+
+  const formData = new FormData(this);
+  const data = {
+    sessionDate: formData.get('sessionDate'),
+    startTime: formData.get('startTime'),
+    endTime: formData.get('endTime'),
+    topic: formData.get('topic')
+  };
+
+  fetch(`/attendance/course/${courseId}/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      window.location.href = `/attendance/session/${data.data._id}/mark`;
+    } else {
+      showFormError(data.error || 'Failed to create attendance session');
+    }
+  })
+  .catch(err => showFormError(err.message));
+});
+</script>

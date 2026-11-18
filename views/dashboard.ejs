@@ -1,0 +1,84 @@
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Attendance control center</p>
+    <h1>Welcome back, <%= typeof lecturerName !== 'undefined' ? lecturerName : 'Lecturer' %></h1>
+    <p class="hero-copy">Manage students, courses, fingerprint enrollment, and live attendance sessions from one focused workspace.</p>
+  </div>
+  <div class="hero-actions">
+    <a href="/attendance/course" class="btn btn-light disabled" tabindex="-1" aria-disabled="true">
+      <i class="bi bi-calendar-check"></i> Select a Course
+    </a>
+    <a href="/fingerprint/enroll" class="btn btn-primary">
+      <i class="bi bi-fingerprint"></i> Enroll Fingerprint
+    </a>
+  </div>
+</section>
+
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card action-card h-100">
+      <div class="card-body">
+        <div class="feature-icon"><i class="bi bi-people"></i></div>
+        <h5 class="card-title">Students</h5>
+        <p class="card-text">Create profiles, import CSV records, and confirm enrollment readiness.</p>
+        <a href="/students" class="btn btn-primary btn-sm">Manage Students</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card action-card h-100">
+      <div class="card-body">
+        <div class="feature-icon"><i class="bi bi-journal-text"></i></div>
+        <h5 class="card-title">Courses</h5>
+        <p class="card-text">Create courses, enroll students, open sessions, and review reports.</p>
+        <a href="/courses" class="btn btn-primary btn-sm">Manage Courses</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card action-card h-100">
+      <div class="card-body">
+        <div class="feature-icon"><i class="bi bi-fingerprint"></i></div>
+        <h5 class="card-title">Fingerprints</h5>
+        <p class="card-text">Capture templates, manage enrolled fingers, and verify device readiness.</p>
+        <a href="/fingerprint/enroll" class="btn btn-primary btn-sm">Open Enrollment</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-2">
+  <div class="col-md-6">
+    <div class="card metric-card">
+      <div class="card-body">
+        <span class="metric-label">Total Students</span>
+        <strong id="totalStudents" class="metric-value"><%= typeof totalStudents !== 'undefined' ? totalStudents : 0 %></strong>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card metric-card">
+      <div class="card-body">
+        <span class="metric-label">Total Courses</span>
+        <strong id="totalCourses" class="metric-value"><%= typeof totalCourses !== 'undefined' ? totalCourses : 0 %></strong>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div>
+      <h5 class="mb-1">System Status</h5>
+      <p class="text-muted mb-0">Fingerprint bridge and device connection state.</p>
+    </div>
+    <% if (typeof error !== 'undefined' && error) { %>
+      <div class="alert alert-warning"><%= error %></div>
+    <% } %>
+    <div>
+      <span id="bridgeStatus" class="badge bg-warning text-dark">Checking...</span>
+    </div>
+  </div>
+</div>

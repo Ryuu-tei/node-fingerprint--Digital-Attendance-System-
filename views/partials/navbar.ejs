@@ -1,0 +1,45 @@
+<nav class="navbar navbar-expand-lg app-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/dashboard" aria-label="Fingerprint Attendance dashboard">
+      <span class="brand-mark"><i class="bi bi-fingerprint"></i></span>
+      <span>FingerMark</span>
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav ms-auto">
+        <% if (typeof lecturerName !== 'undefined' && lecturerName) { %>
+          <li class="nav-item">
+            <a class="nav-link <%= typeof currentPath !== 'undefined' && currentPath === '/dashboard' ? 'active' : '' %>" href="/dashboard">
+              <i class="bi bi-grid"></i> Dashboard
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link <%= typeof currentPath !== 'undefined' && currentPath.startsWith('/students') ? 'active' : '' %>" href="/students">
+              <i class="bi bi-people"></i> Students
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link <%= typeof currentPath !== 'undefined' && (currentPath.startsWith('/courses') || currentPath.startsWith('/attendance') || currentPath.startsWith('/reports')) ? 'active' : '' %>" href="/courses">
+              <i class="bi bi-journal-text"></i> Courses
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link <%= typeof currentPath !== 'undefined' && currentPath.startsWith('/fingerprint') ? 'active' : '' %>" href="/fingerprint/enroll">
+              <i class="bi bi-fingerprint"></i> Fingerprints
+            </a>
+          </li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle user-pill" href="#" id="userMenu" role="button" data-bs-toggle="dropdown">
+              <i class="bi bi-person-circle"></i> <%= lecturerName %>
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
+              <li><a class="dropdown-item" href="/auth/logout"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
+            </ul>
+          </li>
+        <% } %>
+      </ul>
+    </div>
+  </div>
+</nav>

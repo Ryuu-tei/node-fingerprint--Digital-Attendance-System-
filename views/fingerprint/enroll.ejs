@@ -1,0 +1,597 @@
+<h2 class="mb-4">Fingerprint Enrollment</h2>
+
+<div id="bridgeStatusPanel" class="alert alert-secondary">
+  Checking fingerprint bridge...
+</div>
+
+<div class="row">
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header">
+        <h5 class="mb-0">Select Student</h5>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label for="studentSelect" class="form-label">Student</label>
+          <select id="studentSelect" class="form-control" required></select>
+        </div>
+
+        <div id="studentInfo" class="alert alert-info" style="display:none;">
+          <p id="studentName"></p>
+          <p id="studentEmail"></p>
+          <p id="fingerprintStatus"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="fingerprintManagement" style="display:none;">
+      <div class="card-header">
+        <h5 class="mb-0">Captured Fingerprints</h5>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label for="fingerIndex" class="form-label">Select Finger</label>
+          <select id="fingerIndex" class="form-control">
+            <option value="">Select which finger to scan</option>
+            <option value="0">Left Thumb</option>
+            <option value="1">Left Index</option>
+            <option value="2">Left Middle</option>
+            <option value="3">Left Ring</option>
+            <option value="4">Left Little</option>
+            <option value="5">Right Thumb</option>
+            <option value="6">Right Index</option>
+            <option value="7">Right Middle</option>
+            <option value="8">Right Ring</option>
+            <option value="9">Right Little</option>
+          </select>
+          <small id="fingerPolicyHint" class="text-muted d-block mt-2">
+            Enroll Right Thumb first. You may add one backup finger after that.
+          </small>
+        </div>
+
+        <button id="captureBtn" class="btn btn-primary btn-block w-100 mb-2">
+          <i class="bi bi-fingerprint"></i> Capture Fingerprint
+        </button>
+        <% if (typeof mockEnabled !== 'undefined' && mockEnabled) { %>
+          <button id="mockCaptureBtn" class="btn btn-outline-primary btn-block w-100 mb-2">
+            <i class="bi bi-broadcast"></i> Simulate Capture
+          </button>
+        <% } %>
+
+        <div id="captureStatus" class="alert alert-info" style="display:none;"></div>
+        <div id="captureFeedback" class="mb-3" style="display:none;">
+          <div class="progress" style="height: 12px;">
+            <div
+              id="captureQualityBar"
+              class="progress-bar bg-secondary"
+              role="progressbar"
+              style="width: 0%;"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+            ></div>
+          </div>
+          <small id="captureHint" class="text-muted d-block mt-2">Place your finger flat in the center of the scanner.</small>
+        </div>
+
+        <hr>
+
+        <h6>Enrolled Fingerprints</h6>
+        <div id="enrolledList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="scanner-panel">
+      <div class="scanner-screen">
+        <img id="scannerImage" class="scanner-image" alt="Captured fingerprint" style="display:none;">
+        <div id="scannerPrint" class="fingerprint-mark">
+          <i class="bi bi-fingerprint"></i>
+        </div>
+        <div id="scannerPulse" class="scanner-pulse"></div>
+      </div>
+      <div class="scanner-meta">
+        <span id="scannerState" class="badge bg-secondary">Idle</span>
+        <span id="scannerQuality">Quality: --</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const bridgeStatusPanel = document.getElementById('bridgeStatusPanel');
+const primaryFingerIndex = 5;
+const maxFingerprintsPerStudent = 2;
+const fingerNames = [
+  'Left Thumb',
+  'Left Index',
+  'Left Middle',
+  'Left Ring',
+  'Left Little',
+  'Right Thumb',
+  'Right Index',
+  'Right Middle',
+  'Right Ring',
+  'Right Little'
+];
+
+function getFingerName(fingerIndex) {
+  return fingerNames[Number(fingerIndex)] || `Finger ${fingerIndex}`;
+}
+
+function resetFingerOptions(enrolledFingerIndexes = []) {
+  const selectedIndexes = enrolledFingerIndexes.map(index => Number(index));
+  const selected = new Set(selectedIndexes);
+  const fingerSelect = document.getElementById('fingerIndex');
+  const fingerPolicyHint = document.getElementById('fingerPolicyHint');
+  const hasPrimaryFinger = selected.has(primaryFingerIndex);
+  const hasBackupFinger = selectedIndexes.some(index => index !== primaryFingerIndex);
+  const limitReached = selectedIndexes.length >= maxFingerprintsPerStudent;
+
+  Array.from(fingerSelect.options).forEach(option => {
+    if (option.value === '') {
+      option.disabled = false;
+      return;
+    }
+
+    const fingerIndex = Number(option.value);
+    const fingerName = getFingerName(fingerIndex);
+    const isEnrolled = selected.has(fingerIndex);
+    let disabled = isEnrolled;
+    let suffix = '';
+
+    if (isEnrolled) {
+      suffix = ' (already enrolled)';
+    } else if (!hasPrimaryFinger && fingerIndex !== primaryFingerIndex) {
+      disabled = true;
+      suffix = ' (enroll Right Thumb first)';
+    } else if (hasPrimaryFinger && hasBackupFinger) {
+      disabled = true;
+      suffix = ' (limit reached)';
+    } else if (!hasPrimaryFinger && fingerIndex === primaryFingerIndex) {
+      suffix = ' (primary)';
+    } else if (hasPrimaryFinger && fingerIndex !== primaryFingerIndex) {
+      suffix = ' (backup)';
+    }
+
+    option.disabled = disabled;
+    option.textContent = `${fingerName}${suffix}`;
+  });
+
+  if (selected.has(Number(fingerSelect.value))) {
+    fingerSelect.value = '';
+  }
+
+  if (limitReached) {
+    fingerPolicyHint.textContent = 'Right Thumb and one backup finger are enrolled. Delete one before adding another.';
+  } else if (!hasPrimaryFinger) {
+    fingerPolicyHint.textContent = 'Enroll Right Thumb first. Backup fingers unlock after the primary finger is enrolled.';
+  } else {
+    fingerPolicyHint.textContent = 'Right Thumb is enrolled. You may add one backup finger.';
+  }
+}
+
+function updateCaptureFeedback(eventData, requiredQuality = 75) {
+  const feedback = document.getElementById('captureFeedback');
+  const qualityBar = document.getElementById('captureQualityBar');
+  const captureHint = document.getElementById('captureHint');
+  const scannerQuality = document.getElementById('scannerQuality');
+
+  const quality = Number(eventData.quality || 0);
+  feedback.style.display = 'block';
+  qualityBar.style.width = quality + '%';
+  qualityBar.setAttribute('aria-valuenow', quality);
+  scannerQuality.textContent = quality > 0 ? 'Quality: ' + quality + '%' : 'Quality: reading...';
+
+  if (quality >= requiredQuality) {
+    qualityBar.className = 'progress-bar bg-success';
+  } else if (quality >= Math.max(55, requiredQuality - 20)) {
+    qualityBar.className = 'progress-bar bg-warning';
+  } else {
+    qualityBar.className = 'progress-bar bg-danger';
+  }
+
+  captureHint.textContent = eventData.message || 'Keep your finger still on the scanner.';
+}
+
+function renderCaptureImage(eventData) {
+  if (!eventData.imageData) {
+    return;
+  }
+
+  const scannerImage = document.getElementById('scannerImage');
+  const scannerPrint = document.getElementById('scannerPrint');
+
+  scannerImage.src = `data:${eventData.imageMimeType || 'image/bmp'};base64,${eventData.imageData}`;
+  scannerImage.style.display = 'block';
+  scannerPrint.style.display = 'none';
+}
+
+function resetCaptureFeedback(options = {}) {
+  const feedback = document.getElementById('captureFeedback');
+  const qualityBar = document.getElementById('captureQualityBar');
+  const captureHint = document.getElementById('captureHint');
+  const scannerQuality = document.getElementById('scannerQuality');
+  const scannerImage = document.getElementById('scannerImage');
+  const scannerPrint = document.getElementById('scannerPrint');
+
+  qualityBar.style.width = '0%';
+  qualityBar.setAttribute('aria-valuenow', '0');
+  qualityBar.className = 'progress-bar bg-secondary';
+  captureHint.textContent = 'Place your finger flat in the center of the scanner.';
+  scannerQuality.textContent = 'Quality: --';
+  scannerImage.removeAttribute('src');
+  scannerImage.style.display = 'none';
+  scannerPrint.style.display = 'grid';
+  feedback.style.display = options.show ? 'block' : 'none';
+}
+
+function describeBridge(data) {
+  const bridge = data && data.data ? data.data : data;
+
+  if (!bridge || !bridge.success) {
+    return {
+      className: 'alert alert-danger',
+      message: bridge && bridge.error ? bridge.error : 'Fingerprint bridge is not reachable. Start it with npm run bridge.'
+    };
+  }
+
+  if (bridge.ready) {
+    const deviceText = bridge.sdk && bridge.sdk.devices && bridge.sdk.devices.length
+      ? ` Device: ${bridge.sdk.devices.join(', ')}.`
+      : '';
+    return {
+      className: 'alert alert-success',
+      message: `${bridge.name || 'Fingerprint bridge'} is ready.${deviceText}`
+    };
+  }
+
+  return {
+    className: 'alert alert-warning',
+    message: bridge.message || 'Fingerprint bridge is running, but no device is ready.'
+  };
+}
+
+function refreshBridgeStatus() {
+  fetch('/fingerprint/api/bridge-info')
+    .then(res => res.json())
+    .then(data => {
+      const status = describeBridge(data);
+      bridgeStatusPanel.className = status.className;
+      bridgeStatusPanel.textContent = status.message;
+    })
+    .catch(() => {
+      bridgeStatusPanel.className = 'alert alert-danger';
+      bridgeStatusPanel.textContent = 'Fingerprint bridge is not reachable. Start it with npm run bridge.';
+    });
+}
+
+refreshBridgeStatus();
+
+function loadEnrolledFingerprints(studentId) {
+  return fetch(`/fingerprint/api/student/${studentId}/fingerprints`)
+    .then(res => res.json())
+    .then(data => {
+      const list = document.getElementById('enrolledList');
+
+      if (data.data && data.data.length > 0) {
+        resetFingerOptions(data.data.map(fp => fp.fingerIndex));
+        list.innerHTML = '<ul class="list-group">';
+        data.data.forEach(fp => {
+          const fingerName = fp.fingerName || getFingerName(fp.fingerIndex);
+          list.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+            <span>${fingerName}</span>
+            <button
+              type="button"
+              class="btn btn-sm btn-danger delete-fingerprint-btn"
+              data-fingerprint-id="${fp._id}"
+              data-finger-name="${encodeURIComponent(fingerName)}"
+            >
+              <i class="bi bi-trash"></i> Delete
+            </button>
+          </li>`;
+        });
+        list.innerHTML += '</ul>';
+        return;
+      }
+
+      resetFingerOptions();
+      list.innerHTML = '<p class="text-muted">No fingerprints enrolled</p>';
+    });
+}
+
+// Load students
+fetch('/students/api/search')
+  .then(res => res.json())
+  .then(data => {
+    const select = document.getElementById('studentSelect');
+    select.innerHTML = '<option value="">Select a student</option>';
+    data.data.forEach(student => {
+      select.innerHTML += `<option value="${student._id}">${student.studentId} - ${student.firstName} ${student.lastName}</option>`;
+    });
+  });
+
+// Handle student selection
+document.getElementById('studentSelect').addEventListener('change', function() {
+  const studentId = this.value;
+  if (!studentId) {
+    document.getElementById('studentInfo').style.display = 'none';
+    document.getElementById('fingerprintManagement').style.display = 'none';
+    resetFingerOptions();
+    resetCaptureFeedback();
+    return;
+  }
+
+  resetCaptureFeedback();
+
+  // Show student info
+  const selectOption = this.options[this.selectedIndex];
+  const text = selectOption.text.split(' - ');
+  document.getElementById('studentName').innerHTML = '<strong>' + text[1] + '</strong>';
+  document.getElementById('studentEmail').innerHTML = '<strong>ID:</strong> ' + text[0];
+  document.getElementById('studentInfo').style.display = 'block';
+  document.getElementById('fingerprintManagement').style.display = 'block';
+
+  loadEnrolledFingerprints(studentId);
+});
+
+document.getElementById('fingerIndex').addEventListener('change', function() {
+  resetCaptureFeedback();
+});
+
+document.getElementById('captureBtn').addEventListener('click', function() {
+  captureFingerprint(false);
+});
+
+const mockCaptureBtn = document.getElementById('mockCaptureBtn');
+if (mockCaptureBtn) {
+  mockCaptureBtn.addEventListener('click', function() {
+    mockEnrollFingerprint();
+  });
+}
+
+document.getElementById('enrolledList').addEventListener('click', function(event) {
+  const button = event.target.closest('.delete-fingerprint-btn');
+  if (!button) {
+    return;
+  }
+
+  deleteFingerprint(button.dataset.fingerprintId, decodeURIComponent(button.dataset.fingerName || 'fingerprint'));
+});
+
+// Capture fingerprint
+function captureFingerprint(forceMock) {
+  const studentId = document.getElementById('studentSelect').value;
+  const fingerIndex = document.getElementById('fingerIndex').value;
+
+  if (!studentId) {
+    alert('Please select a student');
+    return;
+  }
+
+  if (fingerIndex === '') {
+    alert('Please select a finger');
+    return;
+  }
+
+  if (document.getElementById('fingerIndex').selectedOptions[0]?.disabled) {
+    alert('This finger is already enrolled. Delete it before scanning again.');
+    return;
+  }
+
+  const statusDiv = document.getElementById('captureStatus');
+  const scannerState = document.getElementById('scannerState');
+  const scannerQuality = document.getElementById('scannerQuality');
+  const scannerPulse = document.getElementById('scannerPulse');
+  const scannerImage = document.getElementById('scannerImage');
+  const scannerPrint = document.getElementById('scannerPrint');
+  const captureBtn = document.getElementById('captureBtn');
+  const mockCaptureBtn = document.getElementById('mockCaptureBtn');
+  const captureHint = document.getElementById('captureHint');
+
+  resetCaptureFeedback({ show: true });
+  statusDiv.innerHTML = forceMock
+    ? 'Simulating fingerprint capture...'
+    : 'Capturing fingerprint... Please place your finger on the scanner.';
+  statusDiv.style.display = 'block';
+  scannerState.className = 'badge bg-warning text-dark';
+  scannerState.textContent = forceMock ? 'Simulating' : 'Scanning';
+  scannerQuality.textContent = 'Quality: reading...';
+  scannerPulse.classList.add('is-scanning');
+  captureBtn.disabled = true;
+  if (mockCaptureBtn) {
+    mockCaptureBtn.disabled = true;
+  }
+  captureHint.textContent = 'Place your finger flat in the center of the scanner.';
+
+  let captureFinished = false;
+  let requiredQuality = 75;
+  const params = new URLSearchParams({
+    fingerIndex: parseInt(fingerIndex),
+    studentId
+  });
+  const source = new EventSource('/fingerprint/api/capture-stream?' + params.toString());
+
+  function finishCaptureUi() {
+    scannerPulse.classList.remove('is-scanning');
+    captureBtn.disabled = false;
+    if (mockCaptureBtn) {
+      mockCaptureBtn.disabled = false;
+    }
+  }
+
+  function enrollCapturedFingerprint(captureData) {
+    fetch('/fingerprint/api/enroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        studentId,
+        fingerIndex: parseInt(fingerIndex),
+        templateData: captureData.templateData
+      })
+    })
+    .then(res => res.json())
+    .then(enrollData => {
+      if (enrollData.success) {
+        statusDiv.innerHTML = '<div class="alert alert-success">Fingerprint enrolled successfully!</div>';
+        scannerState.className = 'badge bg-success';
+        scannerState.textContent = 'Captured';
+        loadEnrolledFingerprints(studentId);
+      } else {
+        statusDiv.innerHTML = '<div class="alert alert-danger">Error: ' + enrollData.error + '</div>';
+        scannerState.className = 'badge bg-danger';
+        scannerState.textContent = 'Failed';
+      }
+    })
+    .catch(err => {
+      statusDiv.innerHTML = '<div class="alert alert-danger">Error: ' + err.message + '</div>';
+      scannerState.className = 'badge bg-danger';
+      scannerState.textContent = 'Failed';
+    })
+    .finally(finishCaptureUi);
+  }
+
+  source.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+
+    if (data.event === 'started') {
+      requiredQuality = data.requiredQuality || requiredQuality;
+      captureHint.textContent = data.message || captureHint.textContent;
+      return;
+    }
+
+    if (data.event === 'preview' || data.event === 'position') {
+      updateCaptureFeedback(data, requiredQuality);
+      renderCaptureImage(data);
+      scannerState.textContent = 'Scanning';
+      return;
+    }
+
+    if (data.event === 'done') {
+      captureFinished = true;
+      source.close();
+
+      if (!data.success) {
+        statusDiv.innerHTML = '<div class="alert alert-danger">Error: ' + (data.error || 'Fingerprint capture failed') + '</div>';
+        scannerState.className = 'badge bg-danger';
+        scannerState.textContent = 'Failed';
+        finishCaptureUi();
+        return;
+      }
+
+      updateCaptureFeedback(data, requiredQuality);
+      scannerQuality.textContent = 'Quality: ' + (data.quality || 100) + '%';
+      renderCaptureImage(data);
+
+      enrollCapturedFingerprint(data);
+    }
+  };
+
+  source.onerror = function() {
+    source.close();
+    if (!captureFinished) {
+      statusDiv.innerHTML = '<div class="alert alert-danger">Error: fingerprint capture stream disconnected</div>';
+      scannerState.className = 'badge bg-danger';
+      scannerState.textContent = 'Failed';
+      finishCaptureUi();
+    }
+  };
+}
+
+function mockEnrollFingerprint() {
+  const studentId = document.getElementById('studentSelect').value;
+  const fingerIndex = document.getElementById('fingerIndex').value;
+
+  if (!studentId) {
+    alert('Please select a student');
+    return;
+  }
+
+  if (fingerIndex === '') {
+    alert('Please select a finger');
+    return;
+  }
+
+  if (document.getElementById('fingerIndex').selectedOptions[0]?.disabled) {
+    alert('This finger is already enrolled. Delete it before scanning again.');
+    return;
+  }
+
+  const statusDiv = document.getElementById('captureStatus');
+  const scannerState = document.getElementById('scannerState');
+  const scannerQuality = document.getElementById('scannerQuality');
+  const scannerPulse = document.getElementById('scannerPulse');
+  const captureBtn = document.getElementById('captureBtn');
+  const mockCaptureBtn = document.getElementById('mockCaptureBtn');
+
+  resetCaptureFeedback({ show: true });
+  statusDiv.innerHTML = 'Simulating fingerprint capture...';
+  statusDiv.style.display = 'block';
+  scannerState.className = 'badge bg-warning text-dark';
+  scannerState.textContent = 'Simulating';
+  scannerQuality.textContent = 'Quality: reading...';
+  scannerPulse.classList.add('is-scanning');
+  captureBtn.disabled = true;
+  if (mockCaptureBtn) {
+    mockCaptureBtn.disabled = true;
+  }
+
+  fetch('/fingerprint/api/mock-enroll', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      studentId,
+      fingerIndex: parseInt(fingerIndex)
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      statusDiv.innerHTML = '<div class="alert alert-success">Mock fingerprint enrolled successfully!</div>';
+      scannerState.className = 'badge bg-success';
+      scannerState.textContent = 'Captured';
+      scannerQuality.textContent = 'Quality: 100%';
+      loadEnrolledFingerprints(studentId);
+    } else {
+      statusDiv.innerHTML = '<div class="alert alert-danger">Error: ' + data.error + '</div>';
+      scannerState.className = 'badge bg-danger';
+      scannerState.textContent = 'Failed';
+    }
+  })
+  .catch(err => {
+    statusDiv.innerHTML = '<div class="alert alert-danger">Error: ' + err.message + '</div>';
+    scannerState.className = 'badge bg-danger';
+    scannerState.textContent = 'Failed';
+  })
+  .finally(() => {
+    scannerPulse.classList.remove('is-scanning');
+    captureBtn.disabled = false;
+    if (mockCaptureBtn) {
+      mockCaptureBtn.disabled = false;
+    }
+  });
+}
+
+function deleteFingerprint(fingerprintId, fingerName = 'fingerprint') {
+  const studentId = document.getElementById('studentSelect').value;
+  const statusDiv = document.getElementById('captureStatus');
+
+  if (confirm(`Delete ${fingerName}?`)) {
+    fetch(`/fingerprint/api/fingerprint/${fingerprintId}`, {
+      method: 'DELETE'
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        statusDiv.innerHTML = '<div class="alert alert-success">Fingerprint deleted successfully.</div>';
+        statusDiv.style.display = 'block';
+        loadEnrolledFingerprints(studentId);
+      } else {
+        alert('Error: ' + data.error);
+      }
+    })
+    .catch(err => alert('Error: ' + err.message));
+  }
+}
+</script>
